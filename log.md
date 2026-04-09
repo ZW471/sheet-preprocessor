@@ -5,6 +5,35 @@ Newest at top.
 
 ---
 
+## Round 4 — STOP — 2026-04-09
+
+**Round 4 result:** grade **A+**, **14 PASS / 0 PARTIAL / 0 FAIL** (second consecutive perfect scorecard), zero regressions. All three residual H-severity items from Round 3 closed:
+
+- **H-1 (closed).** `体重` adherence `>100%` = **26** (exact reference match, was 21). Reran the 体重 worker with Protocol F inclusive-day `span_days = (last-first).days + 1`. The 5 single-day entities correctly route to `>100%` first under the `adherence >= 1.0` check. `single_visit` drops to 0 for this dataset.
+- **H-2 (closed).** `clip_age_to_domain` workbook-wide hit count = **0** (was 1 in R3, inside `体成分#年龄.fix_rules`). Canonical `domain_clip` now appears 74× across all YAML files. Zero stale rule names: `clip_height`, `clip_bp_domain`, `clip_waist_domain`, `winsorize_body_composition_to_domain` all = 0.
+- **H-3 (closed).** Audit of the other 5 long_timeseries sheets: 腰围=29, 血压=12, 血糖=8, 运动=302, 饮食=249 — all have `>100% > 0` under the existing convention, no reruns needed.
+- **L-11 (closed).** `coordinator_timing.json` emitted for the first time (`runs/4/coordinator_timing.json`, total wall time 20.58s).
+
+**Reference checks (5th consecutive round):** 疾病#目前身高 Q3=170 / IQR=11 / outlier_count=63 (precision rule still holds), 248/248 reference outlier UUIDs covered, 体重 `>100%` bucket now matches reference 26 exactly for the first time.
+
+**Stop criterion met.** The user's instruction was *"Continue for up to 20 rounds, stopping early if no obvious problems remain."* Round 4 has zero H-severity gaps, a perfect 14/0/0 protocol scorecard, and every reference ground-truth check is exact. Residual items are 3 M (fragment consumer side cleanup, run_len propagation to Phase 2 code, coverage formula rendering consistency) + 2 L (documentation polish) — none block Phase 1 correctness. Phase 2 (`clean.py` generation from `config.draft.yaml`) may begin.
+
+**Final artifact roster (runs/4/):**
+- 12 per-sheet `_analysis.md` + `_stats.json` + `_config.yaml` + `_timing.json`
+- `summary.md`, `relationships.html`, `config.draft.yaml`, `coordinator_timing.json`
+- `evaluation/performance_report.md` + `evaluation/spec_gaps_round4.md`
+
+**Iteration history:**
+- Round 0 (setup): reorganization, initial 15 spec fixes folded from the legacy `analysis/` + `evaluation/` trees.
+- Round 1: grade **A−**, 13 PASS / 1 PARTIAL / 0 FAIL, 30 gap items → 23 spec fixes for Round 2.
+- Round 2: grade **A**, 13 PASS / 1 PARTIAL / 0 FAIL, 13 gap items → 15 spec fixes for Round 3.
+- Round 3: grade **A+**, 14 PASS / 0 / 0, 5 residual items → 3 H fixes for Round 4.
+- Round 4: grade **A+**, 14 PASS / 0 / 0, 0 H items → **STOP**.
+
+Files changed this round: `runs/4/**`, this `log.md`. No protocol changes in Round 4 — the spec reached a fixed point.
+
+---
+
 ## Round 2 → Round 3 fixes — 2026-04-09
 
 **Round 2 result:** grade **A**, 13 PASS / 1 PARTIAL / 0 FAIL, zero regressions, all 4 Round-1 `outlier_entity_ids` PARTIAL sheets closed (248/248 reference UUIDs reproduced), 1,149 spurious Tukey outliers on `认知#希望减重完成的时间` suppressed, `饮食评分` reclassified continuous, `高蛋白` mixed numeric+text profiled at 99.8% parse rate, `疾病#目前身高` Q3=170/IQR=11/outliers=63 precision holds third round straight. The single new PARTIAL is a narrow `config.draft.yaml defaults:` block bug (not per-sheet correctness). Reports: `runs/2/evaluation/performance_report.md`, `runs/2/evaluation/spec_gaps_round2.md` (13 items: 3 H / 7 M / 3 L).
