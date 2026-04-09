@@ -20,21 +20,42 @@ defaults:
 
 sheets:
   <sheet_name>:
-    kind: wide_snapshot | long_timeseries | long_timeseries_borderline | lookup_table | id_list
+    kind: wide_snapshot | wide_snapshot_repeated | long_timeseries | long_timeseries_borderline | lookup_table | id_list
     entity_key: <col>
-    time_key:   <col>          # required for long_timeseries
+    time_key:   <col>          # required for long_timeseries; optional for wide_snapshot_repeated
     value_cols: [<col>, ...]   # for long_timeseries — which columns are the measured values
+    cadence_per_day: 1.0       # adherence denominator for long_timeseries (1/d, 7/d, …)
+    inband_null_tokens: ["", "N/A", "-", "无", "未知"]   # pre-scrub before classification
     domain_limits:
       <col>: { min: <float>, max: <float>, units: "kg" }
     columns:
       <col>:
         type: continuous | ordered_categorical | unordered_categorical | multi_label | text | id | datetime
         encoding: label | onehot | multihot | none
+        units: "kg"            # first-class unit tag (promoted from domain_limits in round 2)
         levels: [...]          # for ordered_categorical
         separator: ","         # for multi_label
         fix_rules: [<rule_id>, ...]  # references clean.py functions
         notes: "..."
     header_dedup_log: [...]    # original header → renamed header
+
+    # Per-entity constants promoted out of this sheet (Protocol B / F).
+    # Each fragment is a column set whose values are constant per entity_key and can be
+    # joined back from the wide_snapshot sheet rather than tiled across time-series rows.
+    fragments:
+      <fragment_name>:
+        kind: wide_snapshot_fragment
+        source_sheet: <the wide_snapshot sheet that owns these columns>
+        columns: [年龄, 性别]
+
+    # Escalations that the user must confirm before Phase 2. Structured so the
+    # assembler can enforce them. free-form notes go in `notes:` only.
+    escalations:
+      - protocol: F
+        column: 运动耗能
+        issue: implausible_delta_default_missing
+        proposal: "escalate exercise_kcal threshold to user"
+        user_confirmed: false
 
 join_keys:
   - key: 患者id

@@ -48,6 +48,25 @@ Store continuous stats at **full float precision** in `analysis/<sheet>_stats.js
 
 Rule: **stats files are computed once and read for both display and downstream math.** Never recompute fences from rounded display values.
 
-## Outlier entity list
+## Outlier entity list (MANDATORY)
 
-For every continuous column with `outlier_count > 0`, write the affected entity ids (up to 250) into the per-sheet analysis as `outlier_entity_ids`. Use the sheet's id column. This list is the input for the human-in-the-loop review step and feeds the per-patient outlier roster downstream consumers may need.
+For every continuous column with `outlier_count > 0`, write the affected entity ids (up to 250) into **both** the per-sheet `<sheet>_stats.json` AND the per-sheet `<sheet>_analysis.md` under a field named `outlier_entity_ids`. Use the sheet's declared id column. This list is the input for the human-in-the-loop review step and feeds any downstream per-entity outlier roster.
+
+**Schema-level requirement.** `outlier_entity_ids` is NOT optional. A worker that emits `outlier_count > 0` on a continuous column without a corresponding `outlier_entity_ids` list FAILS Phase 1 validation. Run 1 had 4 sheets (`轻断食`, `饮食`, `血压`, `高蛋白`) missing this field — do not repeat.
+
+## Tukey-fence suppression for discrete and highly-skewed distributions
+
+IQR fences are meaningless on discrete-low-cardinality or extremely skewed data. Before reporting outliers on a continuous column:
+
+```python
+if n_unique <= 8 or abs(skew) > 5:
+    # Tukey not applicable — do not emit outlier_count / fences.
+    notes.append("discrete_or_skewed — Tukey N/A")
+    outlier_count = None
+```
+
+Examples:
+- `认知#希望减重完成的时间` has 4 unique integer values (3/6/12/24 months). Tukey fires on 1,149 rows that are not outliers.
+- Highly right-skewed counts (skew > 5) put the Q3+1.5·IQR fence below the mode.
+
+When suppressed, use domain limits (if provided) or escalate to the user for a clipping rule instead.

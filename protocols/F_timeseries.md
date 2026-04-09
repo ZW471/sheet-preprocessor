@@ -21,13 +21,49 @@ IMPLAUSIBLE_DELTA_DEFAULTS = {
     "glucose_mmol":   5.0,
     "waist_cm":       5.0,
     "hr_bpm":        40.0,
+    # Nutrition / activity — per-day change caps
+    "exercise_kcal": 2000.0,
+    "diet_kcal":     2000.0,
+    "protein_g":      100.0,
+    "fat_g":          100.0,
+    "carb_g":         300.0,
 }
 
 BUCKET_DAYS = 7         # weekly buckets for adherence-decay curves
-COPY_PASTE_RUN_LEN = 3  # ≥3 consecutive identical values flagged as copy-paste
+
+# Per-domain copy-paste run thresholds. Unlisted value cols default to 3.
+COPY_PASTE_RUN_LEN_DEFAULTS = {
+    "weight_kg":      7,   # weight legitimately stabilizes
+    "sbp_mmhg":       3,
+    "dbp_mmhg":       3,
+    "glucose_mmol":   3,
+    "waist_cm":       3,
+    "exercise_kcal":  3,
+    "diet_kcal":      3,
+}
+COPY_PASTE_RUN_LEN = 3  # fallback for unlisted domains
+
+# Per-entity informative-missingness correlation: minimum pair count.
+MIN_PAIRS_FOR_PER_ENTITY_CORR = 3
 ```
 
 If the value column is not in the defaults dict, escalate to the user for the threshold instead of guessing.
+
+### Cohort modifiers (surgical / bariatric / perinatal etc.)
+
+Some thresholds should loosen for a clearly-defined sub-cohort. Support an optional `cohort_modifier` block per sheet in `config.yaml`:
+
+```yaml
+implausible_delta:
+  weight_kg: 3.0
+  cohort_modifier:
+    post_bariatric:
+      weight_kg: 5.0
+      window_days: 30   # applies for N days after the anchor event
+      anchor: surgery_date
+```
+
+Workers use the modifier when the per-entity rows fall within the window; otherwise the default applies.
 
 ## Diagnostics (Phase 1)
 
@@ -89,9 +125,14 @@ by_bucket = (
 ## Required findings in the per-sheet report
 
 0. **Sentinel-date scrub.** Drop or mask rows where `year < 2000` or the date equals a known placeholder (`0001-01-01`, `1900-01-01`, `1970-01-01`). These inflate `span_days` for a handful of entities and destroy decay metrics. Log counts.
-1. **Adherence distribution** (overall and by any user-specified subgroup). Use **11 buckets**: `0-10%, 10-20%, …, 90-100%, >100%`. The `>100%` bucket captures same-day multi-readings and must NOT be merged into `90-100%`.
+1. **Adherence distribution** (overall and by any user-specified subgroup). Use **12 buckets**: `single_visit, 0-10%, 10-20%, …, 90-100%, >100%`.
+   - `single_visit` catches entities with `span_days == 0` (one record, or multiple same-day records). These have an undefined adherence ratio — do NOT fudge by dividing by 1 or 7.
+   - The `>100%` bucket captures same-day multi-readings when `span_days > 0` and must NOT be merged into `90-100%`.
+   - The denominator used (daily, weekly, event-based) MUST be spelled out in the per-sheet report. Adherence = `n_records / (span_days * cadence_per_day)`; `cadence_per_day` defaults to 1 and must be declared in the per-sheet config.
 2. **Missingness decay** — active entities vs time-since-start; does adherence fall off?
-3. **Informative missingness** — does gap length correlate with the observed value? Compute the correlation **per-entity** (then summarize: median, IQR), not pooled. Pooled correlations are dominated by between-entity variance and miss the within-entity signal.
+3. **Informative missingness** — does gap length correlate with the observed value? Compute the correlation **per-entity** (then summarize: median, IQR), not pooled.
+   - **Minimum pair count:** `MIN_PAIRS_FOR_PER_ENTITY_CORR = 3`. Entities with fewer pairs are excluded from the aggregation and counted in `info_miss_excluded_entities`.
+   - **NaN handling:** per-entity correlations that come back NaN (constant value or constant gap) MUST be dropped before computing median / IQR / mean. Run 1 饮食 reported NaN mean because constant-value entities poisoned the aggregate.
 4. **Physiological / domain limits** — hard upper/lower bounds the user confirms.
 5. **Change-rate limits** — per-entity `max_abs_delta`; flag values above the implausible-delta threshold for the value column.
 6. **Duplicate / copy-paste** — runs of `≥ COPY_PASTE_RUN_LEN` identical consecutive values, or stretches where `delta == 0` over multiple weeks.

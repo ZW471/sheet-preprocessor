@@ -28,5 +28,9 @@ Confidence: high | medium | low
 - **Outliers outside domain limits** → winsorize to domain bound + add `<col>_was_clipped` mask column (medium).
 - **String-encoded numeric ranges** → parse to midpoint per Protocol B (high).
 - **Sentinel dates / placeholder dates** → mask to null + add `<col>_was_sentinel` indicator (high).
+- **Copy-paste runs (`n_consecutive_equal >= COPY_PASTE_RUN_LEN`)** → mask the trailing values of each run (keep the head) + add `<col>_was_copypaste` indicator (medium). Use the per-domain run length from Protocol F's `COPY_PASTE_RUN_LEN_DEFAULTS`. For legitimately stable signals (weight), use length 7 not 3.
+- **Discrete column with failing Tukey fence** → suppress outlier proposal entirely (see Protocol C). Propose only when `n_unique > 8 AND abs(skew) <= 5`.
+- **Derived / redundant column** (e.g., BMI that can be recomputed from weight/height) → drop + recompute post-clean in a derived-features step (low confidence; escalate).
+- **Cohort-wide escalation** (e.g., pediatric patients, post-surgery window) — do NOT propose a per-column fix. Write a single entry in `analysis/<sheet>_config.yaml → escalations:` and surface it in `summary.md` under "Cohort-wide escalations".
 
 Every proposal is cross-referenced from the generated `clean.py` function via docstring.

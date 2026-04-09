@@ -13,7 +13,7 @@ A "non-trivial" join key is any column shared across ≥2 sheets that is NOT a g
 - Single self-contained HTML file, **<500 lines**.
 - Vanilla HTML + vis-network or d3 via CDN. **No build step**, no SPA framework.
 - Nodes = sheets. Node size proportional to row count (log scale recommended).
-- Edges = shared keys. Edge thickness proportional to join coverage (`min(matched, total) / max(total)`).
+- Edges = shared keys. Edge thickness proportional to **coverage** where `coverage(A, B, key) = |A ∩ B| / min(|A.key.unique|, |B.key.unique|)`. Render this formula on hover so the reader knows it is a containment ratio, not a Jaccard index.
 - Hover tooltip on each node: sheet kind, n_rows, n_unique(entity_key), top columns.
 - Hover on each edge: key name, coverage %, # matched ids.
 - Sidebar lists all join keys with counts; clicking a key highlights the relevant edges.
