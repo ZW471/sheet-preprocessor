@@ -79,8 +79,11 @@ per_entity = (
           pl.len().alias("n_records"),
           pl.col(TIME_KEY).min().alias("first"),
           pl.col(TIME_KEY).max().alias("last"),
-          (pl.col(TIME_KEY).max() - pl.col(TIME_KEY).min())
-              .dt.total_days().alias("span_days"),
+          # Round 2 M-9 fix: inclusive-day convention.
+          # span_days = (last - first).days + 1 so a single-day range counts 1 day,
+          # matching the reference sheet adherence buckets (26 vs 21 in 体重).
+          ((pl.col(TIME_KEY).max() - pl.col(TIME_KEY).min())
+              .dt.total_days() + 1).alias("span_days"),
           pl.col(VALUE_COL).mean().alias("mean_value"),
           pl.col(VALUE_COL).std().alias("std_value"),
       ])
@@ -126,7 +129,7 @@ by_bucket = (
 
 0. **Sentinel-date scrub.** Drop or mask rows where `year < 2000` or the date equals a known placeholder (`0001-01-01`, `1900-01-01`, `1970-01-01`). These inflate `span_days` for a handful of entities and destroy decay metrics. Log counts.
 1. **Adherence distribution** (overall and by any user-specified subgroup). Use **12 buckets**: `single_visit, 0-10%, 10-20%, …, 90-100%, >100%`.
-   - `single_visit` catches entities with `span_days == 0` (one record, or multiple same-day records). These have an undefined adherence ratio — do NOT fudge by dividing by 1 or 7.
+   - `single_visit` catches entities with only ONE record total (`n_records == 1`). Under the inclusive-day convention (Round 2 M-9) `span_days == 1` on single-day multi-records, whose adherence is legitimately `n_records / 1.0 > 100%` and MUST route to the `>100%` bucket, not `single_visit`.
    - The `>100%` bucket captures same-day multi-readings when `span_days > 0` and must NOT be merged into `90-100%`.
    - The denominator used (daily, weekly, event-based) MUST be spelled out in the per-sheet report. Adherence = `n_records / (span_days * cadence_per_day)`; `cadence_per_day` defaults to 1 and must be declared in the per-sheet config.
 2. **Missingness decay** — active entities vs time-since-start; does adherence fall off?

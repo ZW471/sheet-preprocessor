@@ -11,12 +11,21 @@ version: 1
 source_file: "example_sheets/visit.xlsx"   # workbook stem used in <stem>::<sheet> indexing
 
 defaults:
-  implausible_delta:                         # per Protocol F
-    weight_kg:    3.0
-    sbp_mmhg:    40.0
-    glucose_mmol: 5.0
+  implausible_delta:                         # per Protocol F — MUST enumerate every key from IMPLAUSIBLE_DELTA_DEFAULTS
+    weight_kg:     3.0
+    sbp_mmhg:     40.0
+    glucose_mmol:  5.0
+    exercise_kcal: 2000
+    diet_kcal:     2000
+    protein_g:     100
+    fat_g:         100
+    carb_g:        300
   bucket_days: 7
-  copy_paste_run_len: 3
+  copy_paste_run_len:                        # per-domain dict, NOT a scalar (Round 2 H-1 fix)
+    default:   3
+    weight_kg: 7
+  min_pairs_for_per_entity_corr: 3           # pinned; Protocol F §MIN_PAIRS_FOR_PER_ENTITY_CORR
+  inband_null_tokens: ["", "N/A", "-", "无", "未知", "记不清", "不详"]
 
 sheets:
   <sheet_name>:
@@ -59,7 +68,11 @@ sheets:
 
 join_keys:
   - key: 患者id
-    sheets: [建档, 体重, 体成分, ...]
+    sheets: [建档, 体重, 体成分, ...]   # MUST list EVERY sheet whose entity_key equals this join key
+    unique_per_sheet:                 # populated by each per-sheet worker; null only allowed for id_list
+      建档: 5096
+      体重: 5098
+      体成分: 2415
     coverage: 0.97             # min coverage across sheets
     role: primary              # primary | foreign | demographic
 ```
@@ -74,6 +87,27 @@ This split enables parallel workers — each worker only writes its own file, an
 
 - Every `entity_key` must appear in `columns` for that sheet.
 - Every `long_timeseries` sheet must declare a `time_key` and at least one `value_col`.
+- Every `wide_snapshot_repeated` sheet must declare a `time_key` (Round 2 M-10 fix).
 - `domain_limits` keys must be a subset of `columns`.
-- `join_keys[*].sheets` must all exist in `sheets`.
+- `join_keys[*].sheets` must contain EVERY sheet whose `entity_key` equals the join key — no silent omissions (Round 2 M-4 fix).
+- `join_keys[*].unique_per_sheet` must be populated for every listed sheet; null only allowed for `id_list` kind (Round 2 M-8 fix).
+- `defaults.implausible_delta` must enumerate every key from Protocol F §IMPLAUSIBLE_DELTA_DEFAULTS; assembler fails if any are missing (Round 2 H-2 fix).
+- `defaults.copy_paste_run_len` must be a dict with `default:` and per-domain overrides, not a scalar (Round 2 H-1 fix).
+- `defaults.min_pairs_for_per_entity_corr` must equal 3 and must match whatever the per-sheet time-series workers use (Round 2 H-3 fix).
 - Fragments missing required fields fail the assembly step with a clear error pointing to the responsible worker.
+
+## Optional column schema: `empty_string_split` (Round 2 M-7)
+
+Some categorical columns encode "not applicable" as an empty string gated by a sibling column (e.g., `运动#每次运动时间` is empty iff `是否运动 == 无`). To make this machine-readable:
+
+```yaml
+columns:
+  运动#每次运动时间:
+    type: ordered_categorical
+    empty_string_split:
+      gate_column: 是否运动
+      gate_value:  "无"
+      bool_col:    运动#每次运动时间_not_applicable
+```
+
+Phase 2 `clean.py` reads this block and emits the derived boolean + nulls the original.

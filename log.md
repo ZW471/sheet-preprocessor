@@ -5,6 +5,34 @@ Newest at top.
 
 ---
 
+## Round 2 → Round 3 fixes — 2026-04-09
+
+**Round 2 result:** grade **A**, 13 PASS / 1 PARTIAL / 0 FAIL, zero regressions, all 4 Round-1 `outlier_entity_ids` PARTIAL sheets closed (248/248 reference UUIDs reproduced), 1,149 spurious Tukey outliers on `认知#希望减重完成的时间` suppressed, `饮食评分` reclassified continuous, `高蛋白` mixed numeric+text profiled at 99.8% parse rate, `疾病#目前身高` Q3=170/IQR=11/outliers=63 precision holds third round straight. The single new PARTIAL is a narrow `config.draft.yaml defaults:` block bug (not per-sheet correctness). Reports: `runs/2/evaluation/performance_report.md`, `runs/2/evaluation/spec_gaps_round2.md` (13 items: 3 H / 7 M / 3 L).
+
+**Spec fixes folded into `protocols/` for Round 3:**
+
+1. **[H] `defaults.copy_paste_run_len` must be a dict (H-1).** Round 2 assembler wrote scalar `3`; any Phase 2 cleaner reading defaults would re-flag 17k+ legitimate weight stabilizations. Protocol H now requires `{default: 3, weight_kg: 7}` dict form.
+2. **[H] `defaults.implausible_delta` must enumerate all Protocol F keys (H-2).** Round 2 missed `exercise_kcal / diet_kcal / protein_g / fat_g / carb_g`. Protocol H assembler validation now fails if any key is absent.
+3. **[H] `defaults.min_pairs_for_per_entity_corr = 3` pinned (H-3).** Round 2 defaults block had `5`, per-sheet workers used `3` — downstream entity counts would drift. Protocol H now pins to 3.
+4. **[H] `defaults.inband_null_tokens` surfaced to top-level defaults (H).** Previously per-sheet only.
+5. **[C/M] Tukey-suppressed columns still emit `outlier_entity_ids: null` + sibling `domain_violation_entity_ids` (M-5).** Closes the 腰围 skew=6.06 case where the schema was ambiguous.
+6. **[D/M] Canonical `domain_clip(col, lo, hi, mask_col)` rule name (M-6).** Replaces 4 bespoke variants (`clip_height`, `clip_waist_domain`, `winsorize_body_composition_to_domain`, `domain_clip`). Single shared `clean.py` function.
+7. **[H/M] `empty_string_split:` optional column field (M-7).** Machine-readable schema for the `运动#每次运动时间` pattern so the assembler can generate the derived boolean.
+8. **[H/M] `join_keys[*].sheets` must include EVERY sheet whose `entity_key` matches (M-4).** Round 2 assembler omitted `体重`.
+9. **[H/M] `join_keys[*].unique_per_sheet` must be populated for every listed sheet (M-8).** Null only allowed for `id_list` kind.
+10. **[H/M] `wide_snapshot_repeated` sheets must declare `time_key` (M-10).** Round 2 left 轻断食/限能量/高蛋白 with `time_key: null`.
+11. **[F/M] `span_days` inclusive-day convention (M-9).** `span_days = (last - first).days + 1`. Closes the 体重 adherence `>100%` bucket mismatch (worker=21 vs reference=26 before fix).
+12. **[F/M] `single_visit` bucket semantics clarified.** Route entities by `n_records == 1`, not `span_days == 0`. Single-day multi-records belong in `>100%`.
+13. **[L] `coordinator_timing.json` re-enabled (L-11).** Emit per-round wall-time aggregate.
+14. **[L] Protocol G: derive edges from `join_keys.sheets` so HTML and config stay consistent (L-12).**
+15. **[L] `建档.fragments:` declares provider side (L-13).** Source sheet writes `{demographics: {columns: [性别, 年龄], exported_to: [...]}}`; consumers populate `{source: 建档, columns: [...]}`.
+
+Files changed: `protocols/C_diagnostics.md`, `protocols/D_proposals.md`, `protocols/F_timeseries.md`, `protocols/H_config_schema.md`, this `log.md`.
+
+**Expected effect:** Round 3 should close the single Round-2 PARTIAL (`config.draft.yaml defaults:` block), populate the 体重 join_keys entry, reconcile `min_pairs_for_per_entity_corr` to 3 workbook-wide, align `>100%` adherence bucket with the 26-patient reference, and standardize all domain-clip proposals on the `domain_clip` canonical rule.
+
+---
+
 ## Round 1 → Round 2 fixes — 2026-04-09
 
 **Round 1 result:** grade **A−**, 13 PASS / 1 PARTIAL / 0 FAIL on the protocol scorecard, all 15 round-0 FAIL items closed, zero regressions. Precision rule confirmed: `疾病#目前身高` Q3=170 IQR=11 outlier_count=63 (vs run-0 wrong 169/10/102). 248/248 reference outlier UUIDs covered by the new `outlier_entity_ids` lists. Reports: `runs/1/evaluation/performance_report.md`, `runs/1/evaluation/spec_gaps_round1.md` (30 items: 5 H / 17 M / 8 L).

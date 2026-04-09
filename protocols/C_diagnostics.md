@@ -70,3 +70,14 @@ Examples:
 - Highly right-skewed counts (skew > 5) put the Q3+1.5·IQR fence below the mode.
 
 When suppressed, use domain limits (if provided) or escalate to the user for a clipping rule instead.
+
+**Suppressed-column schema (Round 2 M-5 fix).** When Tukey is suppressed, you MUST still emit the `outlier_entity_ids` field (as explicit `null`) so downstream schema validation passes. If `domain_limits` is declared for the column, ALSO emit a sibling field `domain_violation_entity_ids: [...]` listing (up to 250) entity ids whose values fall outside `[min, max]`. Both fields coexist; neither replaces the other.
+
+```json
+"腰围": {
+  "tukey_suppressed": true,
+  "tukey_note": "skew=6.06 > 5 — Tukey N/A",
+  "outlier_entity_ids": null,
+  "domain_violation_entity_ids": ["<uuid>", "..."]
+}
+```
