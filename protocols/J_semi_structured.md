@@ -76,8 +76,11 @@ profile = {
 | `all_integer` AND `n_unique_range.max ≤ 5` AND `value_range` spans ≤ 10 | **Ordinal scale** (e.g., servings, frequency codes) | `ordered_categorical` |
 | `all_integer` AND `n_unique_range.max ≤ 20` AND not evenly-spaced | **Nominal code** | `unordered_categorical` |
 | Numeric AND `n_unique_range.max > 20` AND values span a wide range | **True measurement** (keep as continuous) | `continuous` |
-| `value_dtype == "mixed"` (numbers + text in same column) | **Mixed** — needs user decision | Escalate |
+| `value_dtype == "mixed"` AND **>70% of non-null values parse as numeric** | **Numeric-dominant** — classify as `continuous`, flag text values as outliers (see Protocol B §Numeric-dominant rule) | `continuous` |
+| `value_dtype == "mixed"` AND ≤70% numeric | **Mixed** — needs user decision | Escalate |
 | `pct_zero_or_empty > 0.9` across the group | **Sparse indicator** — consider binary encoding | `unordered_categorical` or binary |
+
+**Important:** Patterned columns with numeric values (dosages, weights in grams, quantities) should default to `continuous`, not `unordered_categorical`. Dietary intake sheets commonly have columns where the majority of values are numeric amounts (e.g., 0, 100, 150, 200, 250 grams) with occasional text outliers (e.g., "适量"=appropriate amount, "根据说明书"=per instructions). These are measurements, not categories. Apply the Protocol B numeric-dominant rule (>70% numeric → continuous) before falling back to categorical classification.
 
 ### Step 3: Generate an issue for user confirmation
 

@@ -398,10 +398,27 @@ body {
 .tab-btn:hover { color: var(--text); }
 .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
 
-/* ── Box plot canvas ── */
-.box-plot-container {
-  display: inline-block;
-  vertical-align: middle;
+/* ── Plotly chart containers ── */
+.plotly-chart-box {
+  width: 100%;
+  min-height: 80px;
+}
+
+.plotly-chart-pie {
+  width: 300px;
+  min-height: 220px;
+}
+
+.plotly-chart-bar {
+  width: 100%;
+  min-height: 120px;
+}
+
+/* Remove Plotly default border/shadow */
+.plotly-chart-box .js-plotly-plot,
+.plotly-chart-pie .js-plotly-plot,
+.plotly-chart-bar .js-plotly-plot {
+  background: transparent !important;
 }
 
 /* ── Stat cards grid ── */

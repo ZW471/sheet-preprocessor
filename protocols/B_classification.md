@@ -44,6 +44,59 @@ The fixed cutoffs above (20, 50, 0.95) are defaults for sheets with `n ≥ 1000`
 - Small sheets (`n < 1000`): use `u ≤ 0.02 * n` as the categorical cutoff (floor 5).
 - Very large sheets (`n > 10^6`): raise the "continuous" cutoff to `u > 200` so low-resolution sensor readouts are not misread as continuous.
 
+## Prefer ordered_categorical over unordered_categorical
+
+When a column has 2–15 unique values, check if they can be ordered before defaulting to `unordered_categorical`:
+
+- **Semantically orderable** — frequency words (几乎不/偶尔/经常 = never/sometimes/often), severity (轻/中/重 = mild/moderate/severe), size (小/中/大 = small/medium/large), willingness (无所谓/一般/比较强烈/非常强烈), time spans (<15分钟, 15-30分钟, >30分钟), frequency (几乎没有运动, 平均1-2次/周, 平均3-5次/周, 几乎天天运动): classify as `ordered_categorical` and generate a `level_order` mapping in config.yaml.
+- **Numerically orderable** — the values are numbers stored as strings (e.g., `"0"`, `"1"`, `"2"`, `"3"`): classify as `continuous` or `ordered_categorical` depending on context (see numeric-dominant rule below).
+
+## Numeric-dominant columns are continuous
+
+If **>70% of non-null values** in a column parse as numeric (int or float), classify as `continuous` even if some values are text. Text values should be handled as follows:
+
+- **Range strings** like `"150-200"`, `"100~200"`, `"50-100"` → parse to midpoint (e.g., 175.0). Record in `notes: "range-normalized"`.
+- **Non-numeric strings** (e.g., `"根据说明书"`, `"自行购买"`, `"适量"`) → treat as missing/outlier. Flag in an issue entry describing the non-numeric tokens and their counts.
+- **Numeric-with-unit strings** (e.g., `"200g"`, `"250ml"`, `"200克"`) → strip the unit suffix, parse the number. Record the unit in `notes`.
+- **Dash/sentinel strings** (`"-"`, `"—"`, `""`) → treat as null (in-band null tokens).
+
+The 70% threshold is computed on actual row values (not unique values). This rule takes priority over the `u ≤ 20` categorical rules in the rule table.
+
+## Generate ordinal mappings for ordered_categorical
+
+For any `ordered_categorical` column, the `config.yaml` MUST include a `level_order` mapping that encodes the semantic ordering as integers:
+
+```yaml
+columns:
+  <col_name>:
+    type: ordered_categorical
+    level_order:
+      几乎不: 1
+      偶尔: 2
+      经常: 3
+    levels: [几乎不, 偶尔, 经常]
+    encoding: label
+```
+
+The `level_order` dict maps each category value to its ordinal position (1-indexed). The `levels` array lists the values in ascending order. Both MUST be present and consistent.
+
+Common Chinese ordinal patterns to recognize:
+- 几乎不/偶尔/经常 (frequency: almost never / occasionally / often)
+- 无所谓/一般/比较强烈/非常强烈 (intensity: indifferent / moderate / fairly strong / very strong)
+- 没概念/有限了解/清楚 (awareness: no concept / limited understanding / clear)
+- 未曾尝试/经常减重/反复反弹 (experience: never tried / frequent dieting / repeated rebound)
+- 清淡/一般/重口味 (taste preference: light / moderate / heavy)
+- <15分钟/15-30分钟/>30分钟 (duration: <15min / 15-30min / >30min)
+- 几乎不/1-4次/周/5-9次/周/>10次/周 (frequency: almost never / 1-4/wk / 5-9/wk / >10/wk)
+
+## Minimize unordered_categorical and text
+
+`unordered_categorical` should ONLY be used when:
+- Values are genuinely unordered (e.g., blood types A/B/AB/O, country names, gender 男/女, marital status)
+- Values cannot be meaningfully ordered either semantically or numerically
+
+`text` should ONLY be used for true free-text fields with high cardinality (>50 unique values with no numeric pattern). Before classifying as `text`, always check the numeric-dominant rule — many columns classified as `text` due to high cardinality are actually numeric-dominant (e.g., dosage columns with many numeric values plus a few text outliers).
+
 ## Always escalate to the user
 
 - Integer columns with 3–20 unique values (ordinal scale vs nominal code vs low-res continuous)

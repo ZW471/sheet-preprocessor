@@ -141,6 +141,14 @@ Create an issue whenever the agent encounters any of these situations:
 - Values that look like they were copy-pasted from a different format
 - Encoding ambiguity (e.g., 0/1 that might be boolean or a count)
 
+## When NOT to create issues
+
+**Never ask about column names.** Column names are provided by the data source and are not ambiguous — use them as-is. Do not create issues asking "What does column X mean?" or "Should we rename column Y?" Column naming is not the agent's concern.
+
+**Never ask about things you can determine from the data.** If a column's type can be inferred from its values (e.g., >70% numeric → continuous per Protocol B), classify it and move on. Only create an issue if the data is genuinely ambiguous after applying all classification rules.
+
+**Never create trivial issues.** Issues like "Should we process this column?" or "Is this data important?" waste the user's time. Only flag things that require domain expertise to resolve.
+
 ---
 
 ## Issue lifecycle

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SheetPreprocessor Review</title>
   <link rel="stylesheet" href="/static/css/main.css">
+  <script src="https://cdn.plot.ly/plotly-basic-2.35.2.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
 </head>
@@ -24,8 +25,8 @@
       </li>
       <li :class="{ active: view === 'outliers' }" @click="navigate('outliers')">
         <span class="nav-icon">&#9888;</span> Outlier Review
-        <span class="badge" x-show="totalPending > 0"
-              x-text="totalPending"></span>
+        <span class="badge" x-show="(manifest?.outlier_groups_pending || 0) > 0"
+              x-text="manifest?.outlier_groups_pending || 0"></span>
       </li>
       <li :class="{ active: view === 'issues' }" @click="navigate('issues')">
         <span class="nav-icon">&#9998;</span> Issues
@@ -81,14 +82,14 @@
     </div>
   </main>
 
-  <script src="/static/js/app.js?v=8"></script>
-  <script src="/static/js/views/dashboard.js?v=8"></script>
-  <script src="/static/js/views/sheet-detail.js?v=8"></script>
-  <script src="/static/js/views/relationships.js?v=8"></script>
-  <script src="/static/js/views/outlier-review.js?v=8"></script>
-  <script src="/static/js/views/issues.js?v=8"></script>
-  <script src="/static/js/components/stats-table.js?v=8"></script>
-  <script src="/static/js/components/box-plot.js?v=8"></script>
-  <script src="/static/js/components/toast.js?v=8"></script>
+  <script src="/static/js/app.js?v=9"></script>
+  <script src="/static/js/views/dashboard.js?v=9"></script>
+  <script src="/static/js/views/sheet-detail.js?v=9"></script>
+  <script src="/static/js/views/relationships.js?v=9"></script>
+  <script src="/static/js/views/outlier-review.js?v=9"></script>
+  <script src="/static/js/views/issues.js?v=9"></script>
+  <script src="/static/js/components/stats-table.js?v=9"></script>
+  <script src="/static/js/components/plotly-charts.js?v=9"></script>
+  <script src="/static/js/components/toast.js?v=9"></script>
 </body>
 </html>

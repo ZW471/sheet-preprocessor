@@ -708,14 +708,30 @@ def _update_manifest_counts():
             if not isinstance(root, dict):
                 continue
             # Count outlier groups without decisions
+            # Must match what the frontend shows: only continuous columns with outlier_count > 0
             cols = root.get("columns", {})
             if not isinstance(cols, dict):
                 cols = {}
+            # Also read stats.json to check which columns actually have outliers
+            stats_path = ANALYSIS_DIR / name / "stats.json"
+            stats_cont = {}
+            if stats_path.exists():
+                try:
+                    raw_stats = json.loads(stats_path.read_text(encoding="utf-8"))
+                    norm = normalize_stats(raw_stats, name)
+                    stats_cont = norm.get("continuous", {})
+                except Exception:
+                    pass
             pending = 0
             for col_name, col_data in cols.items():
-                if isinstance(col_data, dict) and col_data.get("type") == "continuous":
-                    if "outlier_decisions" not in col_data:
-                        pending += 1
+                if not isinstance(col_data, dict) or col_data.get("type") != "continuous":
+                    continue
+                if "outlier_decisions" in col_data:
+                    continue
+                # Check stats: only count if outlier_count > 0
+                st = stats_cont.get(col_name, {})
+                if st.get("outlier_count", 0) > 0:
+                    pending += 1
             sheet_info["outlier_groups_pending"] = pending
             total_outlier_pending += pending
             # Escalations are now merged into issues — set to 0 for legacy compat
@@ -769,6 +785,12 @@ def main():
         sys.exit(1)
     print(f"\n  SheetPreprocessor Review Webapp")
     print(f"  Analysis dir: {ANALYSIS_DIR}")
+    # Recount manifest on startup to sync with latest analysis outputs
+    try:
+        _update_manifest_counts()
+        print("  Manifest counts synced.")
+    except Exception as e:
+        print(f"  Warning: manifest sync failed: {e}")
     print(f"  Open: http://{args.host}:{args.port}\n")
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 

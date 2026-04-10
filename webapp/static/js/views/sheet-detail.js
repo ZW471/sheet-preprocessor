@@ -112,8 +112,8 @@ function renderColumnTable(app, sheetName, stats, config) {
       keyStat = `${s.unique || s.n_unique || '—'} unique`;
     }
 
-    const typeBadge = col.type.replace('ordered_categorical', 'categorical')
-                              .replace('unordered_categorical', 'categorical');
+    const typeBadge = col.type.replace('unordered_categorical', 'categorical')
+                              .replace('ordered_categorical', 'categorical');
 
     html += `
           <tr onclick="window._alpineToggle('${key}')"
@@ -193,8 +193,14 @@ function renderColumnDetail(col, config) {
       html += `</div></div>`;
     }
 
-    // Box plot
-    html += `<div style="margin-top:12px"><canvas class="box-plot-canvas" data-min="${s.min}" data-q1="${s.Q1}" data-median="${s.median}" data-q3="${s.Q3}" data-max="${s.max}" data-lower="${s.outlier_lower}" data-upper="${s.outlier_upper}" width="260" height="40"></canvas></div>`;
+    // Box plot (Plotly)
+    const boxId = `plotly-box-${col.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    const domainLimits = colConfig?.domain_limits || s.domain_limits;
+    let boxAttrs = `data-plotly-type="box" data-min="${s.min}" data-q1="${s.Q1}" data-median="${s.median}" data-q3="${s.Q3}" data-max="${s.max}" data-lower="${s.outlier_lower}" data-upper="${s.outlier_upper}"`;
+    if (domainLimits) {
+      boxAttrs += ` data-domain-min="${domainLimits.min}" data-domain-max="${domainLimits.max}"`;
+    }
+    html += `<div style="margin-top:12px"><div id="${boxId}" class="plotly-chart-box" ${boxAttrs}></div></div>`;
 
     html += `</div></div>`;
 
@@ -203,14 +209,48 @@ function renderColumnDetail(col, config) {
     html += `<div class="stat-mini"><span class="label">Cardinality</span><span class="value">${s.cardinality || s.n_unique || '—'}</span></div>`;
     if (s.top_values || s.top_5_values) {
       const top = s.top_values || s.top_5_values;
-      html += `<div style="margin-top:8px"><span style="font-size:12px;color:var(--text-muted)">Top values:</span>`;
+      const topEntries = Object.entries(top).slice(0, 10);
+      const pieId = `plotly-pie-${col.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      const pieData = JSON.stringify(Object.entries(top));
+
+      html += `<div style="margin-top:8px;display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">`;
+
+      // Top values table
+      html += `<div style="flex:1;min-width:200px"><span style="font-size:12px;color:var(--text-muted)">Top values:</span>`;
       html += `<table class="data-table" style="margin-top:4px">`;
-      for (const [val, count] of Object.entries(top).slice(0, 10)) {
+      for (const [val, count] of topEntries) {
         const pct = s.n ? ((count / s.n) * 100).toFixed(1) + '%' : '';
         html += `<tr><td class="mono">${val}</td><td class="num">${count.toLocaleString()}</td><td class="num">${pct}</td></tr>`;
       }
       html += `</table></div>`;
+
+      // Pie chart
+      html += `<div style="flex:0 0 auto"><div id="${pieId}" class="plotly-chart-pie" data-plotly-type="pie" data-values='${pieData.replace(/'/g, "&#39;")}'></div></div>`;
+
+      html += `</div>`;
     }
+
+    // Ordered bar chart for ordered_categorical
+    if (col.type === 'ordered_categorical') {
+      const barId = `plotly-bar-${col.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      // Use level_order if available, otherwise use top_values order
+      let barEntries;
+      if (s.level_order && (s.top_values || s.top_5_values)) {
+        const vals = s.top_values || s.top_5_values;
+        barEntries = s.level_order.map(lv => [lv, vals[lv] || 0]);
+      } else if (s.levels && (s.top_values || s.top_5_values)) {
+        const vals = s.top_values || s.top_5_values;
+        barEntries = s.levels.map(lv => [lv, vals[lv] || 0]);
+      } else if (s.top_values || s.top_5_values) {
+        barEntries = Object.entries(s.top_values || s.top_5_values);
+      }
+      if (barEntries && barEntries.length > 0) {
+        const barData = JSON.stringify(barEntries);
+        html += `<div style="margin-top:12px"><span style="font-size:12px;color:var(--text-muted)">Level distribution (ordered):</span>`;
+        html += `<div id="${barId}" class="plotly-chart-bar" data-plotly-type="bar-ordered" data-values='${barData.replace(/'/g, "&#39;")}'></div></div>`;
+      }
+    }
+
     if (s.levels) {
       html += `<div style="margin-top:8px"><span style="font-size:12px;color:var(--text-muted)">Levels:</span> <span class="mono">${s.levels.join(', ')}</span></div>`;
     }
@@ -222,12 +262,25 @@ function renderColumnDetail(col, config) {
     html += `<div class="stat-mini"><span class="label">Avg tokens/row</span><span class="value">${s.avg_tokens_per_row?.toFixed(2) || '—'}</span></div>`;
     html += `<div class="stat-mini"><span class="label">Separator</span><span class="value mono">${s.separator || '—'}</span></div>`;
     if (s.top_tokens) {
-      html += `<div style="margin-top:8px"><span style="font-size:12px;color:var(--text-muted)">Top tokens:</span>`;
+      const tokenEntries = Object.entries(s.top_tokens).slice(0, 15);
+
+      html += `<div style="margin-top:8px;display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">`;
+
+      // Token table
+      html += `<div style="flex:1;min-width:200px"><span style="font-size:12px;color:var(--text-muted)">Top tokens:</span>`;
       html += `<table class="data-table" style="margin-top:4px">`;
-      for (const [tok, count] of Object.entries(s.top_tokens).slice(0, 10)) {
+      for (const [tok, count] of tokenEntries.slice(0, 10)) {
         html += `<tr><td class="mono">${tok}</td><td class="num">${count.toLocaleString()}</td></tr>`;
       }
       html += `</table></div>`;
+
+      // Token bar chart
+      const barTokenId = `plotly-tokens-${col.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      const barTokenData = JSON.stringify(tokenEntries);
+      html += `<div style="flex:1;min-width:280px"><span style="font-size:12px;color:var(--text-muted)">Token frequency:</span>`;
+      html += `<div id="${barTokenId}" class="plotly-chart-bar" data-plotly-type="bar-tokens" data-values='${barTokenData.replace(/'/g, "&#39;")}'></div></div>`;
+
+      html += `</div>`;
     }
     html += `</div>`;
 
@@ -243,6 +296,25 @@ function renderColumnDetail(col, config) {
     html += `<div class="card" style="margin-bottom:0">`;
     html += `<div class="stat-mini"><span class="label">Unique</span><span class="value">${s.unique || s.n_unique || '—'}</span></div>`;
     html += `<div class="stat-mini"><span class="label">Duplicates</span><span class="value">${s.duplicates || 0}</span></div>`;
+    html += `</div>`;
+
+  } else if (col.type === 'text') {
+    html += `<div class="card" style="margin-bottom:0">`;
+    html += `<div class="stat-mini"><span class="label">Unique</span><span class="value">${s.n_unique || s.unique || '—'}</span></div>`;
+    if (s.avg_length != null) {
+      html += `<div class="stat-mini"><span class="label">Avg length</span><span class="value">${s.avg_length?.toFixed?.(1) || s.avg_length}</span></div>`;
+    }
+    // Show sample values
+    const samples = s.sample_values || s.typical_values || (s.top_values ? Object.keys(s.top_values).slice(0, 5) : null);
+    if (samples && samples.length > 0) {
+      html += `<div style="margin-top:8px"><span style="font-size:12px;color:var(--text-muted)">Sample values:</span>`;
+      html += `<div class="typical-values">`;
+      for (const v of samples.slice(0, 5)) {
+        const display = String(v).length > 40 ? String(v).slice(0, 40) + '...' : v;
+        html += `<span class="val">${display}</span>`;
+      }
+      html += `</div></div>`;
+    }
     html += `</div>`;
   }
 

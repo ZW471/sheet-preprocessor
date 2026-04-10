@@ -136,7 +136,31 @@ function app() {
         }
       });
       await Promise.all(promises);
+      this._syncOutlierCount();
       this.loading = false;
+    },
+
+    _syncOutlierCount() {
+      // Recount outlier groups from actually loaded data so sidebar matches outlier review
+      if (!this.manifest) return;
+      let total = 0;
+      for (const s of this.manifest.sheets) {
+        const stats = this.sheetStats[s.name];
+        const config = this.sheetConfigs[s.name];
+        if (!stats) continue;
+        const sheetConfig = config?.[s.name] || config?.sheets?.[s.name] || config || {};
+        const continuous = stats.continuous || {};
+        let pending = 0;
+        for (const [col, cs] of Object.entries(continuous)) {
+          if (!cs.outlier_count || cs.outlier_count === 0) continue;
+          if (cs.tukey_suppressed) continue;
+          const colCfg = sheetConfig?.columns?.[col] || {};
+          if (!colCfg.outlier_decisions) pending++;
+        }
+        s.outlier_groups_pending = pending;
+        total += pending;
+      }
+      this.manifest.outlier_groups_pending = total;
     },
 
     async fetchJson(url) {
