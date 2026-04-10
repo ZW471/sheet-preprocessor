@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SheetPreprocessor Review</title>
+  <link rel="stylesheet" href="/static/css/main.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+</head>
+<body x-data="app()" x-init="init()">
+  <!-- Sidebar nav -->
+  <nav class="sidebar">
+    <div class="sidebar-header">
+      <h1>Sheet<br>Preprocessor</h1>
+      <p class="subtitle">Review Webapp</p>
+    </div>
+    <ul class="nav-links">
+      <li :class="{ active: view === 'dashboard' }" @click="navigate('dashboard')">
+        <span class="nav-icon">&#9632;</span> Dashboard
+      </li>
+      <li :class="{ active: view === 'relationships' }" @click="navigate('relationships')">
+        <span class="nav-icon">&#8644;</span> Relationships
+      </li>
+      <li :class="{ active: view === 'outliers' }" @click="navigate('outliers')">
+        <span class="nav-icon">&#9888;</span> Outlier Review
+        <span class="badge" x-show="totalPending > 0"
+              x-text="totalPending"></span>
+      </li>
+      <li :class="{ active: view === 'issues' }" @click="navigate('issues')">
+        <span class="nav-icon">&#9998;</span> Issues
+        <span class="badge" x-show="(manifest?.issues_pending || 0) > 0"
+              x-text="manifest?.issues_pending || 0"></span>
+      </li>
+    </ul>
+    <div class="nav-divider">Sheets</div>
+    <ul class="nav-links sheet-nav">
+      <template x-for="s in manifest?.sheets || []" :key="s.name">
+        <li :class="{ active: view === 'sheet' && currentSheet === s.name }"
+            @click="navigate('sheet', s.name)">
+          <span class="kind-dot" :class="kindClass(s.kind)"></span>
+          <span x-text="s.name"></span>
+          <span class="badge warn" x-show="(s.outlier_groups_pending || 0) + (s.escalations_pending || 0) + (s.issues_pending || 0) > 0"
+                x-text="(s.outlier_groups_pending || 0) + (s.escalations_pending || 0) + (s.issues_pending || 0)"></span>
+        </li>
+      </template>
+    </ul>
+  </nav>
+
+  <!-- Main content -->
+  <main class="content">
+    <!-- Dashboard -->
+    <div x-show="view === 'dashboard'" x-cloak>
+      <div x-html="renderDashboard()"></div>
+    </div>
+
+    <!-- Sheet detail -->
+    <div x-show="view === 'sheet'" x-cloak>
+      <div x-html="renderSheetDetail(JSON.stringify(expandedCols))"></div>
+    </div>
+
+    <!-- Relationships -->
+    <div x-show="view === 'relationships'" x-cloak>
+      <div x-html="renderRelationships(relTab)"></div>
+    </div>
+
+    <!-- Outlier review -->
+    <div x-show="view === 'outliers'" x-cloak>
+      <div x-html="renderOutlierReview(outlierFilter, outlierSheetFilter)"></div>
+    </div>
+
+    <!-- Issues -->
+    <div x-show="view === 'issues'" x-cloak>
+      <div x-html="renderIssues(issuesSheetFilter)"></div>
+    </div>
+
+    <!-- Loading -->
+    <div x-show="loading" class="loading-overlay">
+      <div class="spinner"></div>
+      <p>Loading...</p>
+    </div>
+  </main>
+
+  <script src="/static/js/app.js?v=8"></script>
+  <script src="/static/js/views/dashboard.js?v=8"></script>
+  <script src="/static/js/views/sheet-detail.js?v=8"></script>
+  <script src="/static/js/views/relationships.js?v=8"></script>
+  <script src="/static/js/views/outlier-review.js?v=8"></script>
+  <script src="/static/js/views/issues.js?v=8"></script>
+  <script src="/static/js/components/stats-table.js?v=8"></script>
+  <script src="/static/js/components/box-plot.js?v=8"></script>
+  <script src="/static/js/components/toast.js?v=8"></script>
+</body>
+</html>

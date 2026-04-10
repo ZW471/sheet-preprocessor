@@ -1,10 +1,7 @@
-# Ignore everything by default
-*
-
-# Track only the doc set we publish
-!.gitignore
-!SheetPreprocessor.md
-!improvement-guide.md
-!log.md
-!protocols/
-!protocols/**
+.claude/
+example_sheets/
+runs/
+.venv/
+__pycache__/
+log.md
+.DS_store
