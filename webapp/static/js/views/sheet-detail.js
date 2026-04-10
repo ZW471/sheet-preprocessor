@@ -27,6 +27,12 @@ window.renderSheetDetail = function(app, _expandedTrigger) {
   // Column inventory table
   html += renderColumnTable(app, name, stats, sheetConfig);
 
+  // Outlier review for this sheet (same cards as the Outlier Review tab)
+  if (stats && typeof window.renderSheetOutliers === 'function') {
+    const outlierHtml = window.renderSheetOutliers(app, name, stats, sheetConfig);
+    if (outlierHtml) html += outlierHtml;
+  }
+
   // Issues (includes what were previously "escalations" — all merged into issues)
   const issues = sheetConfig?.issues || [];
   if (issues.length > 0) {
@@ -336,7 +342,9 @@ function renderSheetIssues(sheetName, issues) {
     html += `<p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">${pendingCount} item${pendingCount !== 1 ? 's' : ''} need${pendingCount === 1 ? 's' : ''} your input. You can also review all issues across sheets in the <a href="#/issues" style="color:var(--accent)">Issues</a> tab.</p>`;
   }
 
-  for (const issue of issues) {
+  // Sort: pending first, resolved last
+  const sorted = [...issues].sort((a, b) => ((a?.resolved ? 1 : 0) - (b?.resolved ? 1 : 0)));
+  for (const issue of sorted) {
     if (!issue || typeof issue !== 'object') continue;
     // renderIssueCard is defined in issues.js and is globally available
     if (typeof window.renderIssueCardFn === 'function') {

@@ -77,10 +77,49 @@ window.renderOutlierReview = function(app) {
     return html;
   }
 
+  // Sort: pending first, decided last
+  filtered.sort((a, b) => (a.decided ? 1 : 0) - (b.decided ? 1 : 0));
   for (const g of filtered) {
     html += renderDecisionCard(g);
   }
 
+  return html;
+};
+
+
+/**
+ * Render outlier cards for a single sheet (used in sheet detail view).
+ * Returns HTML string or empty string if no outliers.
+ */
+window.renderSheetOutliers = function(app, sheetName, stats, sheetConfig) {
+  const continuous = stats.continuous || {};
+  const groups = [];
+  for (const [colName, colStats] of Object.entries(continuous)) {
+    if (!colStats.outlier_count || colStats.outlier_count === 0) continue;
+    if (colStats.tukey_suppressed) continue;
+    const colConfig = sheetConfig?.columns?.[colName] || {};
+    groups.push({
+      sheet: sheetName,
+      column: colName,
+      stats: colStats,
+      config: colConfig,
+      decision: colConfig.outlier_decisions,
+      decided: !!colConfig.outlier_decisions
+    });
+  }
+  if (groups.length === 0) return '';
+
+  // Sort: pending first, decided last
+  groups.sort((a, b) => (a.decided ? 1 : 0) - (b.decided ? 1 : 0));
+  const pending = groups.filter(g => !g.decided).length;
+  let html = `<div class="card"><div class="card-title">Outlier Review (${groups.length})</div>`;
+  if (pending > 0) {
+    html += `<p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">${pending} outlier group${pending !== 1 ? 's' : ''} pending. You can also review all outliers in the <a href="#/outliers" style="color:var(--accent)">Outlier Review</a> tab.</p>`;
+  }
+  for (const g of groups) {
+    html += renderDecisionCard(g);
+  }
+  html += `</div>`;
   return html;
 };
 

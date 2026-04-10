@@ -59,6 +59,8 @@ window.renderIssues = function(app) {
     return html;
   }
 
+  // Sort: pending first, resolved last
+  filtered.sort((a, b) => (a.resolved ? 1 : 0) - (b.resolved ? 1 : 0));
   for (const issue of filtered) {
     html += renderIssueCard(issue);
   }
