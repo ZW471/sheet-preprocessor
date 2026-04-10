@@ -25,7 +25,7 @@ defaults:
     default:   3
     weight_kg: 7
   min_pairs_for_per_entity_corr: 3           # pinned; Protocol F §MIN_PAIRS_FOR_PER_ENTITY_CORR
-  inband_null_tokens: ["", "N/A", "-", "无", "未知", "记不清", "不详"]
+  inband_null_tokens: ["", "N/A", "-"]   # extend with dataset-specific placeholders
 
 sheets:
   <sheet_name>:
@@ -34,7 +34,7 @@ sheets:
     time_key:   <col>          # required for long_timeseries; optional for wide_snapshot_repeated
     value_cols: [<col>, ...]   # for long_timeseries — which columns are the measured values
     cadence_per_day: 1.0       # adherence denominator for long_timeseries (1/d, 7/d, …)
-    inband_null_tokens: ["", "N/A", "-", "无", "未知"]   # pre-scrub before classification
+    inband_null_tokens: ["", "N/A", "-"]   # pre-scrub before classification; extend per dataset
     domain_limits:
       <col>: { min: <float>, max: <float>, units: "kg" }
     columns:
@@ -55,31 +55,31 @@ sheets:
       <fragment_name>:
         kind: wide_snapshot_fragment
         source_sheet: <the wide_snapshot sheet that owns these columns>
-        columns: [年龄, 性别]
+        columns: [<col_a>, <col_b>]
 
     # Escalations that the user must confirm before Phase 2. Structured so the
     # assembler can enforce them. free-form notes go in `notes:` only.
     escalations:
       - protocol: F
-        column: 运动耗能
+        column: <column_name>
         issue: implausible_delta_default_missing
-        proposal: "escalate exercise_kcal threshold to user"
+        proposal: "escalate threshold to user for confirmation"
         user_confirmed: false
 
 join_keys:
-  - key: 患者id
-    sheets: [建档, 体重, 体成分, ...]   # MUST list EVERY sheet whose entity_key equals this join key
+  - key: <entity_key>
+    sheets: [Sheet_A, Sheet_B, Sheet_C, ...]   # MUST list EVERY sheet whose entity_key equals this join key
     unique_per_sheet:                 # populated by each per-sheet worker; null only allowed for id_list
-      建档: 5096
-      体重: 5098
-      体成分: 2415
+      Sheet_A: 5096
+      Sheet_B: 5098
+      Sheet_C: 2415
     coverage: 0.97             # min coverage across sheets
     role: primary              # primary | foreign | demographic
 ```
 
 ## Per-sheet fragment format
 
-Each per-sheet worker writes its own fragment to `analysis/<sheet>_config.yaml` with just the `sheets.<sheet_name>` subtree (no `version`, no `source_file`, no top-level keys). The assembler merges fragments + adds top-level metadata + computes `join_keys` from cross-sheet column intersections.
+Each per-sheet worker writes its own fragment to `analysis/<sheet>/config.yaml` with just the `sheets.<sheet_name>` subtree (no `version`, no `source_file`, no top-level keys). The assembler merges fragments + adds top-level metadata + computes `join_keys` from cross-sheet column intersections.
 
 This split enables parallel workers — each worker only writes its own file, and the assembler runs once at the end.
 
@@ -98,16 +98,69 @@ This split enables parallel workers — each worker only writes its own file, an
 
 ## Optional column schema: `empty_string_split` (Round 2 M-7)
 
-Some categorical columns encode "not applicable" as an empty string gated by a sibling column (e.g., `运动#每次运动时间` is empty iff `是否运动 == 无`). To make this machine-readable:
+Some categorical columns encode "not applicable" as an empty string gated by a sibling column (e.g., `activity#duration` is empty iff `activity#is_active` = "no"). To make this machine-readable:
 
 ```yaml
 columns:
-  运动#每次运动时间:
+  activity#duration:
     type: ordered_categorical
     empty_string_split:
-      gate_column: 是否运动
-      gate_value:  "无"
-      bool_col:    运动#每次运动时间_not_applicable
+      gate_column: activity#is_active
+      gate_value:  "no"
+      bool_col:    activity#duration_not_applicable
 ```
 
 Phase 2 `clean.py` reads this block and emits the derived boolean + nulls the original.
+
+## User outlier decisions (written by webapp)
+
+The review webapp writes an `outlier_decisions:` block into per-column config when the user makes a decision:
+
+```yaml
+columns:
+  <column_name>:
+    type: continuous
+    outlier_decisions:
+      action: keep           # keep | clip_to_domain | clip_to_custom | flag_only | remove | custom
+      custom_note: null      # freetext from user (only if action=custom)
+      clip_bounds: null      # {min, max} only if action=clip_to_custom
+      decided_at: "2026-04-10T14:30:00"
+```
+
+Phase 2 reads `outlier_decisions.action` and only applies transformations the user explicitly approved. Columns without a decision default to "keep" (no change).
+
+### YAML write robustness (Round 4)
+
+AI-generated `config.yaml` files sometimes contain constructs that `ruamel.yaml` (round-trip mode) cannot re-serialize (e.g., non-standard anchors, mixed quoting, comment markers in values). The webapp server uses a two-tier write strategy:
+
+1. Attempt write with `ruamel.yaml` (preserves comments and formatting).
+2. On failure, fall back to `YAML(typ='safe')` (loses comments but guarantees the dict is persisted).
+
+Workers generating `config.yaml` fragments SHOULD produce clean YAML that round-trips through ruamel without errors. The fallback exists only as a safety net for legacy or AI-generated files.
+
+## Manifest file: `analysis/manifest.json`
+
+Generated by the assembler at the end of Phase 1. The review webapp loads this first.
+
+```json
+{
+  "version": 1,
+  "source_file": "example_sheets/visit.xlsx",
+  "generated": "2026-04-10T03:02:00",
+  "sheets": [
+    {
+      "name": "<sheet_name>",
+      "kind": "wide_snapshot",
+      "n_rows": 5096,
+      "n_unique": 5096,
+      "n_cols": 34,
+      "entity_key": "<entity_key>",
+      "time_key": null,
+      "path": "<sheet_name>/"
+    }
+  ],
+  "join_keys": [{ "key": "<entity_key>", "sheets": ["Sheet_A", "Sheet_B", "..."], "coverage_min": 0.0565 }],
+  "escalation_count": 43,
+  "outlier_groups_pending": 28
+}
+```

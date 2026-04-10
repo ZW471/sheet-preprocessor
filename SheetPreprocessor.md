@@ -30,7 +30,8 @@ Do **not** follow this document for: one-off data questions, ad-hoc plots, or bu
 4. **The generated codebase must run standalone.** No agent, no skill, just `python preprocess.py --input <file> --output <dir>`.
 5. **Confirm the `.pt` schema with the user** before writing the tensor generator. → Protocol E.
 6. **Polars first.** Reach for pandas only if polars truly cannot express the operation, and explain why in a code comment.
-7. **The relationship viewer is mandatory** when ≥3 sheets share a non-trivial join key. → Protocol G.
+7. **The relationship data file is mandatory** when ≥3 sheets share a non-trivial join key. → Protocol G.
+8. **Never auto-decide outlier handling.** Present outliers to the user via the review webapp. Being outside 1.5×IQR does NOT mean a value is invalid. The user decides what to do.
 
 ---
 
@@ -48,6 +49,9 @@ Read each protocol file only when you reach its trigger step.
 | F | [`protocols/F_timeseries.md`](protocols/F_timeseries.md) | Phase 1 step 5 + Phase 2 `timeseries.py` (any `long_timeseries` sheet) |
 | G | [`protocols/G_relationships_view.md`](protocols/G_relationships_view.md) | Phase 1 step 8 (relationship viewer — mandatory when triggered) |
 | H | [`protocols/H_config_schema.md`](protocols/H_config_schema.md) | Phase 1 step 7 (writing draft config) + Phase 2 (consuming it) |
+| I | [`protocols/I_formatter.md`](protocols/I_formatter.md) | Phase 1 step 7 (output format validation — canonical schemas for webapp) |
+| J | [`protocols/J_semi_structured.md`](protocols/J_semi_structured.md) | Phase 1 step 3 (when a sheet has 20+ patterned columns) |
+| K | [`protocols/K_issues.md`](protocols/K_issues.md) | Phase 1 steps 3–7 (flagging uncertainties for user input) |
 
 ---
 
@@ -66,18 +70,24 @@ Three phases. Track them with TodoWrite.
    - `lookup_table` — small reference / dimension sheet
    - `id_list` — single-column list of entity IDs
    The single permitted data access in Step 1 (streaming the entity-key column to compute `rows / n_unique`) is documented in Protocol A. Use the rule in Protocol F to spot long-format sheets.
-3. **Classify every column** into `continuous / ordered_categorical / unordered_categorical / multi_label / text / id / datetime`. → **Read Protocol B.** Show the classification table and ask the user to correct ambiguous cases before running expensive diagnostics.
+3. **Classify every column** into `continuous / ordered_categorical / unordered_categorical / multi_label / text / id / datetime`. → **Read Protocol B.** If a sheet has 20+ columns following a naming pattern (e.g., `section#subsection`), also **read Protocol J** for semi-structured data handling. For any ambiguous classifications, **read Protocol K** and create issues for user input. Show the classification table and ask the user to correct ambiguous cases before running expensive diagnostics.
 4. **Run per-column diagnostics.** → **Read Protocol C.** Use polars lazy expressions so you only scan the sheet once per stat group.
 5. **Run time-series diagnostics** on every `long_timeseries` sheet. → **Read Protocol F.** Cover adherence, missingness decay, informative missingness, per-entity max change rate, duplicate / copy-paste detection.
-6. **Propose fixes.** → **Read Protocol D.** One concrete proposal per issue, with a confidence level.
-7. **Write reports** to:
-   - `analysis/<sheet_name>_analysis.md` — per-sheet diagnostics + proposals
-   - `analysis/<sheet_name>_stats.json` — full-precision stats backing the markdown report
-   - `analysis/<sheet_name>_config.yaml` — per-sheet config fragment (Protocol H)
-   - `analysis/summary.md` — cross-sheet relationships, join keys, sheet-kind table
+6. **Propose fixes.** → **Read Protocol D.** Present issues to the user — do NOT auto-decide how to handle outliers. The user decides via the review webapp.
+7. **Write analysis outputs** to per-sheet subfolders. → **Read Protocol I** for canonical output schemas that the webapp expects.
+   - `analysis/<sheet_name>/stats.json` — full-precision per-column statistics
+   - `analysis/<sheet_name>/config.yaml` — per-sheet config fragment (Protocol H)
+   - `analysis/<sheet_name>/timing.json` — worker timing metrics
    - `analysis/config.draft.yaml` — assembled draft config (Protocol H)
-8. **Relationship viewer (mandatory when triggered).** → **Read Protocol G.** If ≥3 sheets share a non-trivial join key, emit `analysis/relationships.html`. Skipping this is a Phase 1 failure.
-9. **Stop and wait for approval.** Show the user the summary file path and ask: *"Please review `analysis/summary.md` and the per-sheet files. Tell me what to change, or say 'approved' to continue to Phase 2."* Do not proceed until the user explicitly approves.
+   - `analysis/manifest.json` — lightweight index of all sheets, paths, and metadata for the webapp
+   - `analysis/relationships.json` — structured relationship data (Protocol G)
+   Do NOT emit markdown analysis files (`_analysis.md`, `summary.md`). The review webapp renders everything from JSON/YAML.
+8. **Relationship data (mandatory when triggered).** → **Read Protocol G.** If ≥3 sheets share a non-trivial join key, emit `analysis/relationships.json`. Skipping this is a Phase 1 failure.
+9. **Launch the review webapp.** Run the webapp directly from the `webapp/` folder, pointing it at this run's analysis:
+   ```
+   cd webapp && .venv/bin/python server.py --analysis-dir ../runs/<N>/analysis/
+   ```
+   Then tell the user: *"Analysis complete. Review your data in the webapp at http://localhost:8787. Use it to review outliers, confirm escalations, resolve issues (Questions/Issues tab), and approve the analysis before Phase 2."* Do not proceed to Phase 2 until the user explicitly approves and all non-info issues (Protocol K) are resolved.
 
 ### Phase 2 — Generate preprocessing codebase
 
@@ -142,14 +152,20 @@ Write at project root:
 - ❌ Using pandas by default. Polars first; document any pandas fallback.
 - ❌ Generating code before Phase 1 is approved.
 - ❌ Treating numeric-encoded categoricals as continuous because their dtype is numeric.
-- ❌ Silently dropping outliers — always impute with a mask, or escalate.
+- ❌ Auto-deciding outlier handling. Present outliers to the user; they decide via the webapp what is invalid vs legitimate.
+- ❌ Treating statistical outliers (outside 1.5×IQR) as data errors. Age=78 in a weight-loss cohort is legitimate, not an error.
+- ❌ Emitting markdown analysis files. The review webapp is the primary interface; output JSON/YAML only.
+- ❌ Writing analysis outputs as flat files. Use per-sheet subfolders: `analysis/<sheet>/stats.json`.
 - ❌ Hard-coding column names or thresholds in `.py` files instead of `config.yaml`.
 - ❌ Forgetting the `id_to_label` direction in `mapper.json` — predictions become undecodable.
 - ❌ Storing time series as a Python list of per-entity frames in the `.pt`. Always emit dense `[N, T, D]` + mask.
 - ❌ Padding time series with `NaN`. Pad with `0`, mask with `False`.
-- ❌ Skipping the relationship viewer (Protocol G) when its trigger fires.
+- ❌ Skipping the relationship data (Protocol G) when its trigger fires.
 - ❌ Rounding stats before computing outlier fences. Store full precision in `<sheet>_stats.json`. (Protocol C.)
 - ❌ Auto-triggering on generic requests. Only act when the user mentions **sheet preprocessor** or names this file.
+- ❌ Using dataset-specific examples in protocols. Protocols must be generic and work for ANY dataset — use placeholders like `<sheet_name>`, `<entity_key>`, `<column_name>` instead of concrete sheet or column names from a particular workbook.
+- ❌ Treating semi-structured columns (patterned names with low-cardinality values) as independent continuous variables. Use Protocol J to detect and handle these.
+- ❌ Proceeding to Phase 2 with unresolved issues. All `question` and `multichoice` issues (Protocol K) must be resolved before code generation.
 
 ---
 

@@ -81,7 +81,7 @@ per_entity = (
           pl.col(TIME_KEY).max().alias("last"),
           # Round 2 M-9 fix: inclusive-day convention.
           # span_days = (last - first).days + 1 so a single-day range counts 1 day,
-          # matching the reference sheet adherence buckets (26 vs 21 in 体重).
+          # matching the actual adherence buckets for the sheet.
           ((pl.col(TIME_KEY).max() - pl.col(TIME_KEY).min())
               .dt.total_days() + 1).alias("span_days"),
           pl.col(VALUE_COL).mean().alias("mean_value"),
@@ -135,7 +135,7 @@ by_bucket = (
 2. **Missingness decay** — active entities vs time-since-start; does adherence fall off?
 3. **Informative missingness** — does gap length correlate with the observed value? Compute the correlation **per-entity** (then summarize: median, IQR), not pooled.
    - **Minimum pair count:** `MIN_PAIRS_FOR_PER_ENTITY_CORR = 3`. Entities with fewer pairs are excluded from the aggregation and counted in `info_miss_excluded_entities`.
-   - **NaN handling:** per-entity correlations that come back NaN (constant value or constant gap) MUST be dropped before computing median / IQR / mean. Run 1 饮食 reported NaN mean because constant-value entities poisoned the aggregate.
+   - **NaN handling:** per-entity correlations that come back NaN (constant value or constant gap) MUST be dropped before computing median / IQR / mean. Constant-value entities can poison the aggregate if not excluded.
 4. **Physiological / domain limits** — hard upper/lower bounds the user confirms.
 5. **Change-rate limits** — per-entity `max_abs_delta`; flag values above the implausible-delta threshold for the value column.
 6. **Duplicate / copy-paste** — runs of `≥ COPY_PASTE_RUN_LEN` identical consecutive values, or stretches where `delta == 0` over multiple weeks.

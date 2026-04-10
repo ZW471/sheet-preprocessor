@@ -1,36 +1,72 @@
-# Protocol D — Missing values, outliers: proposal format
+# Protocol D — Fix proposals and outlier presentation
 
 **Lazy-loaded by:** Phase 1 step 6.
 
-For every issue surfaced by Protocol C or Protocol F, write **exactly one** proposal row. Don't list five options — pick the best and justify in one sentence.
+For every issue surfaced by Protocol C or Protocol F, write **exactly one** proposal row. Proposals are **suggestions presented to the user via the review webapp** — the user decides what to do.
 
-## Format
+## Core principle: outliers are informational, not errors
 
-```
-Issue:      <column> has <count> <pattern> (<rate>)
-Diagnosis:  <what the pattern really means>
-Proposal:   <single concrete fix>
-Code rule:  clean.py::<function_name>
-Confidence: high | medium | low
+Being outside 1.5×IQR does **NOT** mean a value is invalid. Age=78 in a weight-loss cohort is legitimate. A weight of 130 kg is not an error just because it's above the Tukey fence. **Never auto-decide** how to handle outliers — present them clearly and let the user choose via the webapp.
+
+The only exception is **domain violations** (physically impossible values like height < 0 or heart rate > 100,000). These can be flagged as likely errors with `high` confidence, but the user still confirms.
+
+## Proposal format (written to `<sheet>/config.yaml`)
+
+```yaml
+proposals:
+  - column: <column_name>
+    issue: "204 values outside Tukey fence [159.5, 180.5]"
+    typical_values: [120.0, 155.0, 182.0, 190.0, 200.0]
+    entity_count: 136
+    diagnosis: "Wide age range in cohort; short and tall patients are legitimate"
+    suggestions:
+      - action: keep
+        label: "Keep as-is (these are valid heights)"
+      - action: clip_to_domain
+        label: "Clip to domain [100, 250] + flag"
+        params: { min: 100, max: 250 }
+      - action: flag_only
+        label: "Add _is_outlier column, keep original values"
+      - action: custom
+        label: "Enter your own rule"
+    default_action: keep
+    confidence: low
 ```
 
 ## Confidence levels
 
-- **high** — apply automatically in Phase 2, log in `preprocess_report.json`.
-- **medium** — apply, but show the decision in the Phase 1 report for explicit review.
-- **low** — do not apply; re-ask the user before Phase 2.
+- **high** — likely a data error (domain violation, sentinel value, impossible magnitude). Still presented in the webapp for confirmation.
+- **medium** — ambiguous; could be error or legitimate. User must decide.
+- **low** — almost certainly legitimate data that happens to be statistically unusual. Default suggestion is "keep".
 
 ## Common patterns
 
 - **Missingness > 50%** → propose drop column (medium) unless the missingness is informative per Protocol F (then keep + add missing-indicator column, high).
 - **Single-value column** → propose drop (high).
-- **Outliers within 1.5×IQR fence but inside domain limits** → keep, do not winsorize (high).
-- **Outliers outside domain limits** → winsorize to domain bound + add `<col>_was_clipped` mask column (medium). **Canonical rule name (Round 2 M-6):** `clean.py::domain_clip(col, lo, hi, mask_col=<col>_was_clipped)`. All per-sheet workers must reference this exact function name in `fix_rules:` so the assembler generates a single shared implementation — no bespoke `clip_height` / `winsorize_waist_to_domain` variants.
+- **Statistical outliers (outside Tukey fence, inside domain)** → present for user decision. Default: keep. Confidence: low.
+- **Domain violations (outside physically possible range)** → `domain_clip(col, lo, hi, mask_col=<col>_was_clipped)`. Confidence: high. **Canonical rule name:** `clean.py::domain_clip`. All workers must use this exact name.
 - **String-encoded numeric ranges** → parse to midpoint per Protocol B (high).
 - **Sentinel dates / placeholder dates** → mask to null + add `<col>_was_sentinel` indicator (high).
-- **Copy-paste runs (`n_consecutive_equal >= COPY_PASTE_RUN_LEN`)** → mask the trailing values of each run (keep the head) + add `<col>_was_copypaste` indicator (medium). Use the per-domain run length from Protocol F's `COPY_PASTE_RUN_LEN_DEFAULTS`. For legitimately stable signals (weight), use length 7 not 3.
-- **Discrete column with failing Tukey fence** → suppress outlier proposal entirely (see Protocol C). Propose only when `n_unique > 8 AND abs(skew) <= 5`.
-- **Derived / redundant column** (e.g., BMI that can be recomputed from weight/height) → drop + recompute post-clean in a derived-features step (low confidence; escalate).
-- **Cohort-wide escalation** (e.g., pediatric patients, post-surgery window) — do NOT propose a per-column fix. Write a single entry in `analysis/<sheet>_config.yaml → escalations:` and surface it in `summary.md` under "Cohort-wide escalations".
+- **Copy-paste runs** → mask trailing values + add `<col>_was_copypaste` indicator (medium). Use per-domain run length from Protocol F.
+- **Discrete column with failing Tukey fence** → suppress outlier reporting entirely (see Protocol C).
+- **Derived / redundant column** → escalate to user (low confidence).
+- **Cohort-wide escalation** → write to `escalations:` block, do not propose per-column fix.
 
-Every proposal is cross-referenced from the generated `clean.py` function via docstring.
+## User decisions via the webapp
+
+When the user makes an outlier decision in the review webapp, the server writes an `outlier_decisions:` block into the per-sheet config.yaml:
+
+```yaml
+columns:
+  <column_name>:
+    type: continuous
+    outlier_decisions:
+      action: keep           # keep | clip_to_domain | clip_to_custom | flag_only | remove | custom
+      custom_note: null      # freetext from user (only if action=custom)
+      clip_bounds: null      # {min, max} only if action=clip_to_custom
+      decided_at: "2026-04-10T14:30:00"
+```
+
+Phase 2 code generation reads `outlier_decisions` and only applies transformations the user explicitly approved. Columns without a decision are left unchanged (implicit "keep").
+
+Every applied fix cites the proposal in its `clean.py` docstring.
